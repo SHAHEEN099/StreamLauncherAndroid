@@ -23,6 +23,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 class MainActivity : AppCompatActivity() {
@@ -31,6 +34,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sessionManager: SessionManager
     private val keyGenerator = KeyGenerator()
 
+    // Dedicated OkHttp client for shouldInterceptRequest to guarantee X-Requested-With header is stripped
+    private val interceptClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
     private var customVideoView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private val originalOrientation by lazy { requestedOrientation }
@@ -38,6 +49,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TARGET_URL = "https://stream.testuk.org"
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
         private const val TAG = "StreamLauncher"
     }
 
@@ -52,7 +64,6 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         setupWebView()
 
-        // Check local session or generate key
         checkAndStartWorkflow()
     }
 
@@ -238,18 +249,14 @@ class MainActivity : AppCompatActivity() {
         webSettings.displayZoomControls = false
         webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        webSettings.userAgentString = USER_AGENT
 
-        val chromeMobileUa = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-        webSettings.userAgentString = chromeMobileUa
-
-        // Suppress X-Requested-With header so Cloudflare/anti-bot scripts do not detect in-app WebView
+        // Try setting allowlist for WebSettingsCompat if available on device
         try {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                 WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webSettings, emptySet())
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "WebSettingsCompat not supported: ${e.message}")
-        }
+        } catch (_: Exception) {}
 
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -263,17 +270,110 @@ class MainActivity : AppCompatActivity() {
                 return handleUrlNavigation(view, url)
             }
 
+            // Universal interceptor to completely strip X-Requested-With header on all stream.testuk.org requests
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return null
+                val uri = request.url ?: return null
+                val host = uri.host?.lowercase() ?: ""
+                val method = request.method ?: "GET"
+
+                // Strip X-Requested-With header on all GET requests to testuk.org
+                if (method.equals("GET", ignoreCase = true) && (host.contains("testuk.org") || host.contains("vedstudy"))) {
+                    try {
+                        val okReqBuilder = Request.Builder()
+                            .url(url)
+                            .get()
+
+                        // Forward original headers EXCEPT X-Requested-With
+                        for ((name, value) in request.requestHeaders) {
+                            if (!name.equals("X-Requested-With", ignoreCase = true) &&
+                                !name.equals("x-requested-with", ignoreCase = true)) {
+                                okReqBuilder.header(name, value)
+                            }
+                        }
+
+                        // Explicit clean User-Agent without WebView markers
+                        okReqBuilder.header("User-Agent", USER_AGENT)
+
+                        // Attach verified session cookies
+                        val sessionCookie = sessionManager.getSessionCookie()
+                        val expiry = sessionManager.getSessionExpiry()
+                        val cmCookie = CookieManager.getInstance().getCookie(url) ?: ""
+
+                        val cookieList = mutableListOf<String>()
+                        if (!sessionCookie.isNullOrEmpty()) {
+                            cookieList.add("session=$sessionCookie")
+                        }
+                        if (expiry > 0) {
+                            cookieList.add("session_expiry=$expiry")
+                        }
+                        if (cmCookie.isNotEmpty()) {
+                            for (c in cmCookie.split(";")) {
+                                val trimmed = c.trim()
+                                if (trimmed.isNotEmpty() && !trimmed.startsWith("session=") && !trimmed.startsWith("session_expiry=")) {
+                                    cookieList.add(trimmed)
+                                }
+                            }
+                        }
+                        if (cookieList.isNotEmpty()) {
+                            okReqBuilder.header("Cookie", cookieList.joinToString("; "))
+                        }
+
+                        val okResponse = interceptClient.newCall(okReqBuilder.build()).execute()
+
+                        val contentType = okResponse.header("Content-Type", "text/html; charset=utf-8") ?: "text/html; charset=utf-8"
+                        val mimeType = contentType.substringBefore(";").trim()
+                        val encoding = if (contentType.contains("charset=")) {
+                            contentType.substringAfter("charset=").trim()
+                        } else {
+                            "UTF-8"
+                        }
+
+                        val respHeaders = mutableMapOf<String, String>()
+                        for ((hName, hVal) in okResponse.headers) {
+                            // Strip Content-Encoding & Transfer-Encoding as OkHttp already decodes the stream
+                            if (!hName.equals("Content-Encoding", ignoreCase = true) &&
+                                !hName.equals("Transfer-Encoding", ignoreCase = true)) {
+                                respHeaders[hName] = hVal
+                            }
+                        }
+
+                        return WebResourceResponse(
+                            mimeType,
+                            encoding,
+                            okResponse.code,
+                            if (okResponse.message.isNotEmpty()) okResponse.message else "OK",
+                            respHeaders,
+                            okResponse.body?.byteStream()
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to intercept request for $url: ${e.message}")
+                    }
+                }
+
+                return super.shouldInterceptRequest(view, request)
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 binding.swipeRefresh.isRefreshing = true
 
-                // Detect if the session expired on the backend and redirected to keygenerate
-                if (url != null && url.contains("/keygenerate") && !isGenerating) {
-                    Log.i(TAG, "Redirected to /keygenerate detected. Initiating key refresh...")
-                    sessionManager.clearSession()
-                    binding.webContainer.visibility = View.GONE
-                    binding.splashLayout.visibility = View.VISIBLE
-                    startKeyGenerationFlow()
+                if (url != null) {
+                    // Suppress any stray navigation to vedstudy.com landing page
+                    if (url.contains("vedstudy.com")) {
+                        view?.stopLoading()
+                        view?.loadUrl(TARGET_URL)
+                        return
+                    }
+
+                    // Detect server-side session expiry redirecting to /keygenerate
+                    if (url.contains("/keygenerate") && !isGenerating && binding.webContainer.visibility == View.VISIBLE) {
+                        Log.i(TAG, "Redirect to /keygenerate detected. Initiating key refresh...")
+                        sessionManager.clearSession()
+                        binding.webContainer.visibility = View.GONE
+                        binding.splashLayout.visibility = View.VISIBLE
+                        startKeyGenerationFlow()
+                    }
                 }
             }
 
@@ -335,15 +435,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleUrlNavigation(view: WebView?, url: String): Boolean {
-        // If url is intent:// or android-app://
+        // Prevent loading the dummy vedstudy.com landing page with the Open Now button
+        if (url.contains("vedstudy.com")) {
+            Log.d(TAG, "Suppressed vedstudy.com navigation; redirecting directly to stream.testuk.org")
+            view?.loadUrl(TARGET_URL)
+            return true
+        }
+
+        // Handle intent:// and android-app:// schemes
         if (url.startsWith("intent://") || url.startsWith("android-app://")) {
-            // If website tries to push to Chrome or external vedstudy browser, SUPPRESS IT!
-            if (url.contains("vedstudy.com") || url.contains("testuk.org") || url.contains("chrome")) {
-                Log.d(TAG, "Suppressed external browser intent: $url")
+            if (url.contains("testuk.org") || url.contains("chrome") || url.contains("vedstudy")) {
+                Log.d(TAG, "Suppressed external intent: $url")
                 return true
             }
 
-            // External apps like telegram or whatsapp
             try {
                 val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
@@ -368,7 +473,6 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            // Keep all stream, batch, subject, video, and resource URLs inside WebView
             return false
         }
 
@@ -427,7 +531,6 @@ class MainActivity : AppCompatActivity() {
         Log.i(TAG, "Verified cookies in CookieManager: $verified")
 
         withContext(Dispatchers.Main) {
-            // Show web container, hide splash
             binding.splashLayout.visibility = View.GONE
             binding.webContainer.visibility = View.VISIBLE
 
