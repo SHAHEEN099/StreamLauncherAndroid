@@ -7,6 +7,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,3 +38,13 @@ jobs:
         with:
           name: StreamLauncher-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.0 app/build/outputs/apk/debug/app-debug.apk \
+            --title "StreamLauncher Android v1.0.0" \
+            --notes "StreamLauncher Android build with 7-step auto verification and fullscreen video streaming." \
+            --clobber || true
