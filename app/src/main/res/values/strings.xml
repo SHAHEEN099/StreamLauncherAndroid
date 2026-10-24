@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamLauncher</string>
+    <string name="title_stream">⚡ VEDSTUDY STREAM</string>
+    <string name="subtitle_stream">Autonomous 24h Access Engine &amp; Mobile Stream Client</string>
+    <string name="badge_mode">MOBILE APP MODE</string>
+    
+    <string name="status_initializing">INITIALIZING SYSTEM...</string>
+    <string name="status_checking">CHECKING SESSION...</string>
+    <string name="status_active">ACTIVE SESSION FOUND!</string>
+    <string name="status_expired">SESSION EXPIRED</string>
+    <string name="status_generating">GENERATING 24H KEY...</string>
+    <string name="status_ready">STREAM APP READY</string>
+    <string name="status_error">GENERATION ERROR</string>
+    
+    <string name="tag_standby">[STANDBY]</string>
+    <string name="tag_checking">[CHECKING]</string>
+    <string name="tag_authenticated">[AUTHENTICATED]</string>
+    <string name="tag_expired">[EXPIRED]</string>
+    <string name="tag_generating">[GENERATING]</string>
+    <string name="tag_online">[ONLINE]</string>
+    
+    <string name="btn_force">Force New Key</string>
+    <string name="btn_retry">Retry</string>
+    <string name="system_ready">● SYSTEM READY</string>
+</resources>
