@@ -44,7 +44,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v1.0.0 app/build/outputs/apk/debug/app-debug.apk \
-            --title "StreamLauncher Android v1.0.0" \
-            --notes "StreamLauncher Android build with 7-step auto verification and fullscreen video streaming." \
+          cp app/build/outputs/apk/debug/app-debug.apk StreamLauncher.apk
+          gh release create v1.0.1 StreamLauncher.apk \
+            --title "StreamLauncher Android v1.0.1" \
+            --notes "Fixed net::ERR_UNKNOWN_URL_SCHEME by handling intent:// schemes seamlessly in WebView." \
             --clobber || true
+
