@@ -45,8 +45,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk StreamLauncher.apk
-          gh release create v1.0.1 StreamLauncher.apk \
-            --title "StreamLauncher Android v1.0.1" \
-            --notes "Fixed net::ERR_UNKNOWN_URL_SCHEME by handling intent:// schemes seamlessly in WebView." \
-            --clobber || true
+          gh release create ${{ github.ref_name }}-${{ github.run_number }} StreamLauncher.apk \
+            --title "StreamLauncher Android Build #${{ github.run_number }}" \
+            --notes "Automated Cloud APK build." || true
+
 
