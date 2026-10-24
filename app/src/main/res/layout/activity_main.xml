@@ -218,20 +218,20 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <!-- TOP BAR WITH OPEN IN CHROME BUTTON -->
+        <!-- TOP BAR FOR IN-APP STREAM CONTROLS -->
         <LinearLayout
             android:id="@+id/topBar"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="#131b2e"
+            android:layout_height="44dp"
+            android:background="#0f172a"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingStart="12dp"
             android:paddingEnd="12dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 android:src="@drawable/app_logo"
                 android:contentDescription="@string/app_name" />
 
@@ -242,21 +242,35 @@
                 android:layout_marginStart="8dp"
                 android:text="VEDSTUDY STREAM"
                 android:textColor="#38bdf8"
-                android:textSize="14sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnOpenChrome"
+                android:id="@+id/btnRefreshWeb"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="🌐 Open in Chrome"
+                android:layout_height="32dp"
+                android:text="🔄 Reload"
                 android:textColor="#ffffff"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold"
                 android:background="@drawable/btn_secondary_bg"
                 app:backgroundTint="@null"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp" />
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:layout_marginEnd="6dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNewKeyWeb"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="🔑 New Key"
+                android:textColor="#ffffff"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:background="@drawable/btn_secondary_bg"
+                app:backgroundTint="@null"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
 
         </LinearLayout>
 

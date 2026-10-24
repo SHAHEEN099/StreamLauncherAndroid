@@ -6,20 +6,24 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.vedstudy.streamlauncher.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,9 +34,11 @@ class MainActivity : AppCompatActivity() {
     private var customVideoView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private val originalOrientation by lazy { requestedOrientation }
+    private var isGenerating = false
 
     companion object {
         private const val TARGET_URL = "https://stream.testuk.org"
+        private const val TAG = "StreamLauncher"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,7 +52,7 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         setupWebView()
 
-        // Begin bootstrap check
+        // Check local session or generate key
         checkAndStartWorkflow()
     }
 
@@ -56,11 +62,30 @@ class MainActivity : AppCompatActivity() {
             startKeyGenerationFlow()
         }
 
-        binding.btnOpenChrome.setOnClickListener {
-            openInChrome()
+        binding.btnNewKeyWeb.setOnClickListener {
+            sessionManager.clearSession()
+            binding.webContainer.visibility = View.GONE
+            binding.splashLayout.visibility = View.VISIBLE
+            startKeyGenerationFlow()
+        }
+
+        binding.btnRefreshWeb.setOnClickListener {
+            reloadStreamWithCookies()
         }
 
         binding.swipeRefresh.setOnRefreshListener {
+            reloadStreamWithCookies()
+        }
+    }
+
+    private fun reloadStreamWithCookies() {
+        val cookie = sessionManager.getSessionCookie()
+        val expiry = sessionManager.getSessionExpiry()
+        if (!cookie.isNullOrEmpty()) {
+            lifecycleScope.launch {
+                injectCookiesAndLaunch(cookie, expiry)
+            }
+        } else {
             binding.webView.reload()
         }
     }
@@ -89,7 +114,7 @@ class MainActivity : AppCompatActivity() {
                 etaSec = 0,
                 tag = getString(R.string.tag_checking)
             )
-            delay(800L)
+            delay(600L)
 
             if (sessionManager.isSessionValid()) {
                 val remHours = sessionManager.getRemainingHours()
@@ -100,11 +125,11 @@ class MainActivity : AppCompatActivity() {
                     status = getString(R.string.status_active),
                     detail = String.format("Valid 24h key detected (%.1f hours remaining).", remHours),
                     progressVal = 0.60f,
-                    etaSec = 2,
+                    etaSec = 1,
                     tag = getString(R.string.tag_authenticated)
                 )
-                delay(1000L)
-                launchStreamWebView(cookie, expiry)
+                delay(800L)
+                injectCookiesAndLaunch(cookie, expiry)
             } else {
                 val hasOldCookie = !sessionManager.getSessionCookie().isNullOrEmpty()
                 if (hasOldCookie) {
@@ -124,13 +149,16 @@ class MainActivity : AppCompatActivity() {
                         tag = "[NEW USER]"
                     )
                 }
-                delay(1000L)
+                delay(800L)
                 startKeyGenerationFlow()
             }
         }
     }
 
     private fun startKeyGenerationFlow() {
+        if (isGenerating) return
+        isGenerating = true
+
         lifecycleScope.launch {
             binding.btnForce.isEnabled = false
 
@@ -146,6 +174,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            isGenerating = false
+
             if (result.success && result.sessionCookie != null) {
                 sessionManager.saveSession(
                     cookie = result.sessionCookie,
@@ -160,8 +190,8 @@ class MainActivity : AppCompatActivity() {
                     etaSec = 0,
                     tag = "[SUCCESS]"
                 )
-                delay(1200L)
-                launchStreamWebView(result.sessionCookie, result.sessionExpiry)
+                delay(1000L)
+                injectCookiesAndLaunch(result.sessionCookie, result.sessionExpiry)
             } else {
                 setUiState(
                     status = getString(R.string.status_error),
@@ -212,6 +242,15 @@ class MainActivity : AppCompatActivity() {
         val chromeMobileUa = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
         webSettings.userAgentString = chromeMobileUa
 
+        // Suppress X-Requested-With header so Cloudflare/anti-bot scripts do not detect in-app WebView
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webSettings, emptySet())
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "WebSettingsCompat not supported: ${e.message}")
+        }
+
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -227,11 +266,35 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 binding.swipeRefresh.isRefreshing = true
+
+                // Detect if the session expired on the backend and redirected to keygenerate
+                if (url != null && url.contains("/keygenerate") && !isGenerating) {
+                    Log.i(TAG, "Redirected to /keygenerate detected. Initiating key refresh...")
+                    sessionManager.clearSession()
+                    binding.webContainer.visibility = View.GONE
+                    binding.splashLayout.visibility = View.VISIBLE
+                    startKeyGenerationFlow()
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 binding.swipeRefresh.isRefreshing = false
+
+                // Inject session_expiry into client-side JS document.cookie
+                val expiry = sessionManager.getSessionExpiry()
+                if (expiry > 0) {
+                    view?.evaluateJavascript(
+                        """
+                        try {
+                            document.cookie = "session_expiry=$expiry; path=/; max-age=86400";
+                            if (window.countdownManager && typeof window.countdownManager.init === 'function') {
+                                window.countdownManager.init();
+                            }
+                        } catch(e) {}
+                        """.trimIndent(), null
+                    )
+                }
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -272,18 +335,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleUrlNavigation(view: WebView?, url: String): Boolean {
-        // Handle intent:// and android-app:// schemes
+        // If url is intent:// or android-app://
         if (url.startsWith("intent://") || url.startsWith("android-app://")) {
-            val isChromeTarget = url.contains("package=com.android.chrome") ||
-                                 url.contains("vedstudy.com") ||
-                                 url.contains("testuk.org")
-
-            if (isChromeTarget) {
-                // When webpage requests Chrome to open, fulfill it with the 24h authenticated key!
-                openInChrome()
+            // If website tries to push to Chrome or external vedstudy browser, SUPPRESS IT!
+            if (url.contains("vedstudy.com") || url.contains("testuk.org") || url.contains("chrome")) {
+                Log.d(TAG, "Suppressed external browser intent: $url")
                 return true
             }
 
+            // External apps like telegram or whatsapp
             try {
                 val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
@@ -294,41 +354,30 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        // Standard HTTP / HTTPS URLs:
+        // Standard HTTP / HTTPS URLs
         if (url.startsWith("http://") || url.startsWith("https://")) {
-            // Let the WebView load stream.testuk.org and all courses naturally
+            val uri = Uri.parse(url)
+            val host = uri.host?.lowercase() ?: ""
+
+            // External social / chat links
+            if (host.contains("t.me") || host.contains("whatsapp.com") || host.contains("telegram.me")) {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    startActivity(intent)
+                } catch (_: Exception) {}
+                return true
+            }
+
+            // Keep all stream, batch, subject, video, and resource URLs inside WebView
             return false
         }
 
-        // Other non-HTTP schemes (tg://, whatsapp://, etc.)
+        // Custom protocol schemes
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
         } catch (_: Exception) {}
         return true
-    }
-
-    fun openInChrome(jwtKey: String? = sessionManager.getJwtKey()) {
-        val target = if (!jwtKey.isNullOrEmpty()) {
-            "https://stream.testuk.org/keyloginsuccess?key=$jwtKey"
-        } else {
-            "https://stream.testuk.org/"
-        }
-
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.`package` = "com.android.chrome"
-            startActivity(intent)
-        } catch (_: Exception) {
-            try {
-                val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(target))
-                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(fallback)
-            } catch (_: Exception) {
-                Toast.makeText(this, "Could not open browser on device", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     private fun hideCustomVideoView() {
@@ -347,24 +396,57 @@ class MainActivity : AppCompatActivity() {
         binding.webContainer.visibility = View.VISIBLE
     }
 
-    private fun launchStreamWebView(sessionCookie: String, expiryMs: Long) {
+    private suspend fun injectCookiesAndLaunch(sessionCookie: String, expiryMs: Long) {
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
-        val cookieValue = "session=$sessionCookie; Domain=stream.testuk.org; Path=/; Secure; HttpOnly"
-        cookieManager.setCookie(TARGET_URL, cookieValue)
+        val targetUrl = TARGET_URL
+        val host = "stream.testuk.org"
+        val domain = ".testuk.org"
+
+        // 1. Inject host-only and domain cookies for session
+        setCookieAsync(cookieManager, targetUrl, "session=$sessionCookie; Path=/; Secure; HttpOnly; SameSite=Lax")
+        setCookieAsync(cookieManager, targetUrl, "session=$sessionCookie; Path=/; HttpOnly")
+        setCookieAsync(cookieManager, targetUrl, "session=$sessionCookie; Domain=$host; Path=/; Secure; HttpOnly; SameSite=Lax")
+        setCookieAsync(cookieManager, targetUrl, "session=$sessionCookie; Domain=$domain; Path=/; Secure; HttpOnly; SameSite=Lax")
+
+        // 2. Inject session_expiry cookie (WITHOUT HttpOnly so document.cookie can read it)
         if (expiryMs > 0) {
-            cookieManager.setCookie(TARGET_URL, "session_expiry=$expiryMs; Domain=stream.testuk.org; Path=/; Secure")
+            setCookieAsync(cookieManager, targetUrl, "session_expiry=$expiryMs; Path=/; Secure; SameSite=Lax")
+            setCookieAsync(cookieManager, targetUrl, "session_expiry=$expiryMs; Path=/")
+            setCookieAsync(cookieManager, targetUrl, "session_expiry=$expiryMs; Domain=$host; Path=/; Secure; SameSite=Lax")
+            setCookieAsync(cookieManager, targetUrl, "session_expiry=$expiryMs; Domain=$domain; Path=/; Secure; SameSite=Lax")
         }
+
+        // Commit cookies to storage
         cookieManager.flush()
+        delay(300L)
 
-        // Transition: Hide Splash and Show Web Container
-        binding.splashLayout.visibility = View.GONE
-        binding.webContainer.visibility = View.VISIBLE
+        val verified = cookieManager.getCookie(targetUrl) ?: ""
+        Log.i(TAG, "Verified cookies in CookieManager: $verified")
 
-        val headers = mapOf("Cookie" to "session=$sessionCookie")
-        binding.webView.loadUrl(TARGET_URL, headers)
+        withContext(Dispatchers.Main) {
+            // Show web container, hide splash
+            binding.splashLayout.visibility = View.GONE
+            binding.webContainer.visibility = View.VISIBLE
+
+            val headers = mutableMapOf(
+                "Cookie" to "session=$sessionCookie; session_expiry=$expiryMs",
+                "Referer" to "https://stream.testuk.org/"
+            )
+            binding.webView.loadUrl(targetUrl, headers)
+        }
+    }
+
+    private suspend fun setCookieAsync(cookieManager: CookieManager, url: String, cookieValue: String): Boolean {
+        return suspendCancellableCoroutine { continuation ->
+            cookieManager.setCookie(url, cookieValue) { success ->
+                if (continuation.isActive) {
+                    continuation.resume(success)
+                }
+            }
+        }
     }
 
     override fun onResume() {

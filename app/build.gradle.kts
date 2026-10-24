@@ -11,8 +11,8 @@ android {
         applicationId = "com.vedstudy.streamlauncher"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,6 +47,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.webkit:webkit:1.12.0")
 
     // Coroutines for background tasks
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")

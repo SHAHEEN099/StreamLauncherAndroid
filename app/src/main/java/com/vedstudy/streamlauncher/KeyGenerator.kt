@@ -258,8 +258,21 @@ class KeyGenerator {
                 }
             }
 
+            if (sessionCookie == null) {
+                for ((_, map) in cookieStore) {
+                    map["session"]?.let { sessionCookie = it.value }
+                }
+            }
+
+            val expiryStr = verifyJson.optString("expiry", "")
+            if (sessionExpiry == 0L && expiryStr.isNotEmpty()) {
+                sessionExpiry = expiryStr.toLongOrNull() ?: 0L
+            }
             if (sessionExpiry == 0L) {
-                sessionExpiry = verifyJson.optLong("expiry", System.currentTimeMillis() + 86400000L)
+                sessionExpiry = verifyJson.optLong("expiry", 0L)
+            }
+            if (sessionExpiry == 0L) {
+                sessionExpiry = System.currentTimeMillis() + 86400000L
             }
 
             if (verifiedOk && sessionCookie != null) {
