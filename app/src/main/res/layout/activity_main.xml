@@ -211,18 +211,69 @@
     </ScrollView>
 
     <!-- WEBVIEW CONTAINER (REVEALED WHEN READY) -->
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipeRefresh"
+    <LinearLayout
+        android:id="@+id/webContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:orientation="vertical"
         android:visibility="gone">
 
-        <WebView
-            android:id="@+id/webView"
+        <!-- TOP BAR WITH OPEN IN CHROME BUTTON -->
+        <LinearLayout
+            android:id="@+id/topBar"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="48dp"
+            android:background="#131b2e"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
 
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/app_logo"
+                android:contentDescription="@string/app_name" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="VEDSTUDY STREAM"
+                android:textColor="#38bdf8"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenChrome"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="🌐 Open in Chrome"
+                android:textColor="#ffffff"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:background="@drawable/btn_secondary_bg"
+                app:backgroundTint="@null"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp" />
+
+        </LinearLayout>
+
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresh"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <WebView
+                android:id="@+id/webView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    </LinearLayout>
 
     <!-- FULLSCREEN VIDEO CONTAINER -->
     <FrameLayout

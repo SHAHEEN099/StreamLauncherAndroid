@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.regex.Pattern
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,7 +33,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TARGET_URL = "https://stream.testuk.org"
-        private const val DOMAIN = "stream.testuk.org"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +54,10 @@ class MainActivity : AppCompatActivity() {
         binding.btnForce.setOnClickListener {
             sessionManager.clearSession()
             startKeyGenerationFlow()
+        }
+
+        binding.btnOpenChrome.setOnClickListener {
+            openInChrome()
         }
 
         binding.swipeRefresh.setOnRefreshListener {
@@ -256,7 +258,7 @@ class MainActivity : AppCompatActivity() {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                binding.swipeRefresh.visibility = View.GONE
+                binding.webContainer.visibility = View.GONE
                 binding.customViewContainer.apply {
                     visibility = View.VISIBLE
                     addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -270,82 +272,63 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleUrlNavigation(view: WebView?, url: String): Boolean {
-        // 1. Standard HTTP / HTTPS URLs
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-            val uri = Uri.parse(url)
-            val host = uri.host?.lowercase() ?: ""
-
-            // If navigating to the vedstudy.com landing page (which only has an 'Open Now' button),
-            // seamlessly load the stream platform directly inside the app
-            if (host == "vedstudy.com" || host == "www.vedstudy.com") {
-                val path = uri.path ?: ""
-                if (path.isEmpty() || path == "/") {
-                    view?.loadUrl(TARGET_URL)
-                    return true
-                }
-            }
-            return false // Let WebView load regular pages
-        }
-
-        // 2. Handle intent:// and android-app:// schemes (Fix for net::ERR_UNKNOWN_URL_SCHEME)
+        // Handle intent:// and android-app:// schemes
         if (url.startsWith("intent://") || url.startsWith("android-app://")) {
+            val isChromeTarget = url.contains("package=com.android.chrome") ||
+                                 url.contains("vedstudy.com") ||
+                                 url.contains("testuk.org")
+
+            if (isChromeTarget) {
+                // When webpage requests Chrome to open, fulfill it with the 24h authenticated key!
+                openInChrome()
+                return true
+            }
+
             try {
                 val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-
-                // 2a. Check for fallback URL
-                val fallbackUrl = intent.getStringExtra("browser_fallback_url")
-                if (!fallbackUrl.isNullOrEmpty() && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
-                    view?.loadUrl(fallbackUrl)
-                    return true
-                }
-
-                // 2b. Check intent data URI (e.g. intent://vedstudy.com/#Intent;scheme=https...)
-                val dataUri = intent.data
-                if (dataUri != null) {
-                    val scheme = dataUri.scheme
-                    val host = dataUri.host?.lowercase() ?: ""
-                    if (scheme == "http" || scheme == "https") {
-                        if (host.contains("vedstudy.com") || host.contains("testuk.org")) {
-                            view?.loadUrl(TARGET_URL)
-                        } else {
-                            view?.loadUrl(dataUri.toString())
-                        }
-                        return true
-                    }
-                }
-
-                // 2c. Fallback host extraction from intent URI string
-                val m = Pattern.compile("intent://([^/#?]+)").matcher(url)
-                if (m.find()) {
-                    val host = m.group(1).lowercase()
-                    if (host.contains("vedstudy.com") || host.contains("testuk.org")) {
-                        view?.loadUrl(TARGET_URL)
-                        return true
-                    } else {
-                        view?.loadUrl("https://$host")
-                        return true
-                    }
-                }
-
-                // 2d. If it's a legitimate 3rd party app intent (e.g. Telegram tg://), open it externally
-                try {
-                    intent.addCategory(Intent.CATEGORY_BROWSABLE)
-                    intent.component = null
-                    intent.selector = null
-                    startActivity(intent)
-                } catch (_: Exception) {}
-                return true
-            } catch (_: Exception) {
-                return true
-            }
+                intent.addCategory(Intent.CATEGORY_BROWSABLE)
+                intent.component = null
+                intent.selector = null
+                startActivity(intent)
+            } catch (_: Exception) {}
+            return true
         }
 
-        // 3. Handle other non-http custom protocols (e.g. tg://, whatsapp://, mailto:, tel:)
+        // Standard HTTP / HTTPS URLs:
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            // Let the WebView load stream.testuk.org and all courses naturally
+            return false
+        }
+
+        // Other non-HTTP schemes (tg://, whatsapp://, etc.)
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
         } catch (_: Exception) {}
         return true
+    }
+
+    fun openInChrome(jwtKey: String? = sessionManager.getJwtKey()) {
+        val target = if (!jwtKey.isNullOrEmpty()) {
+            "https://stream.testuk.org/keyloginsuccess?key=$jwtKey"
+        } else {
+            "https://stream.testuk.org/"
+        }
+
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.`package` = "com.android.chrome"
+            startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(target))
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(fallback)
+            } catch (_: Exception) {
+                Toast.makeText(this, "Could not open browser on device", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun hideCustomVideoView() {
@@ -361,7 +344,7 @@ class MainActivity : AppCompatActivity() {
         customViewCallback?.onCustomViewHidden()
         customVideoView = null
         customViewCallback = null
-        binding.swipeRefresh.visibility = View.VISIBLE
+        binding.webContainer.visibility = View.VISIBLE
     }
 
     private fun launchStreamWebView(sessionCookie: String, expiryMs: Long) {
@@ -369,27 +352,19 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
-        // Inject 24h authenticated cookies across stream.testuk.org and vedstudy.com
-        val cookieTargets = listOf(
-            "https://stream.testuk.org",
-            "https://testuk.org",
-            "https://vedstudy.com"
-        )
-        for (target in cookieTargets) {
-            cookieManager.setCookie(target, "session=$sessionCookie; Path=/; Secure; HttpOnly; SameSite=Lax")
-            cookieManager.setCookie(target, "session=$sessionCookie; Domain=.testuk.org; Path=/; Secure; HttpOnly; SameSite=Lax")
-            if (expiryMs > 0) {
-                cookieManager.setCookie(target, "session_expiry=$expiryMs; Path=/; Secure; SameSite=Lax")
-                cookieManager.setCookie(target, "session_expiry=$expiryMs; Domain=.testuk.org; Path=/; Secure; SameSite=Lax")
-            }
+        val cookieValue = "session=$sessionCookie; Domain=stream.testuk.org; Path=/; Secure; HttpOnly"
+        cookieManager.setCookie(TARGET_URL, cookieValue)
+        if (expiryMs > 0) {
+            cookieManager.setCookie(TARGET_URL, "session_expiry=$expiryMs; Domain=stream.testuk.org; Path=/; Secure")
         }
         cookieManager.flush()
 
-        // Transition: Hide Splash and Show WebView
+        // Transition: Hide Splash and Show Web Container
         binding.splashLayout.visibility = View.GONE
-        binding.swipeRefresh.visibility = View.VISIBLE
+        binding.webContainer.visibility = View.VISIBLE
 
-        binding.webView.loadUrl(TARGET_URL)
+        val headers = mapOf("Cookie" to "session=$sessionCookie")
+        binding.webView.loadUrl(TARGET_URL, headers)
     }
 
     override fun onResume() {
