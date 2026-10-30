@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/reader_bg">
+
+    <!-- MAIN PAGES RECYCLERVIEW -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/pdfRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:scrollbars="vertical" />
+
+    <!-- TOP TOOLBAR OVERLAY -->
+    <LinearLayout
+        android:id="@+id/topToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/reader_toolbar_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:elevation="8dp">
+
+        <ImageButton
+            android:id="@+id/btnReaderBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="Back" />
+
+        <TextView
+            android:id="@+id/tvDocTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:text="Document Viewer"
+            android:textColor="@color/text_white"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:ellipsize="marquee"
+            android:marqueeRepeatLimit="marquee_forever" />
+
+        <ImageButton
+            android:id="@+id/btnBookmark"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_bookmark_border"
+            android:contentDescription="Bookmark Page" />
+
+        <ImageButton
+            android:id="@+id/btnColorMode"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_night_mode"
+            android:contentDescription="Night Mode" />
+
+        <ImageButton
+            android:id="@+id/btnScrollMode"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_scroll_mode"
+            android:contentDescription="Scroll Mode" />
+
+        <ImageButton
+            android:id="@+id/btnMoreOptions"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_more_vert"
+            android:contentDescription="More Options" />
+
+    </LinearLayout>
+
+    <!-- BOTTOM CONTROLS OVERLAY -->
+    <LinearLayout
+        android:id="@+id/bottomNav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="@drawable/reader_toolbar_bg"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="14dp"
+        android:elevation="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:id="@+id/tvPageIndicator"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Page 1 / 1"
+                android:textColor="@color/accent_blue"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnJumpPage"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Jump to Page"
+                android:textColor="@color/text_white"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:background="@drawable/btn_secondary_bg"
+                app:backgroundTint="@null"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:layout_marginEnd="6dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnThumbnails"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Grid"
+                android:textColor="@color/text_white"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:background="@drawable/btn_secondary_bg"
+                app:backgroundTint="@null"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
+
+        </LinearLayout>
+
+        <!-- PAGE SCRUBBER SEEKBAR -->
+        <SeekBar
+            android:id="@+id/sbPageScrubber"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="0"
+            android:progress="0"
+            android:progressTint="@color/accent_blue"
+            android:thumbTint="@color/accent_cyan" />
+
+    </LinearLayout>
+
+    <!-- LOADING OVERLAY -->
+    <LinearLayout
+        android:id="@+id/loadingContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/reader_bg"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/pbLoading"
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:indeterminateTint="@color/accent_blue"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/tvLoadingStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Preparing high-speed document stream..."
+            android:textColor="@color/text_white"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:layout_marginBottom="8dp" />
+
+        <ProgressBar
+            android:id="@+id/pbDownloadProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="220dp"
+            android:layout_height="8dp"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/progress_bar_custom" />
+
+    </LinearLayout>
+
+</FrameLayout>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="6dp"
+    android:gravity="center"
+    android:background="?attr/selectableItemBackground">
+
+    <FrameLayout
+        android:id="@+id/thumbnailBorder"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:padding="2dp"
+        android:background="@drawable/reader_badge_bg">
+
+        <ImageView
+            android:id="@+id/ivThumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:background="#FFFFFF"
+            android:contentDescription="Page Thumbnail" />
+
+        <ProgressBar
+            android:id="@+id/pbThumbnail"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/reader_accent" />
+
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tvThumbnailPageNum"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:text="Page 1" />
+
+</LinearLayout>

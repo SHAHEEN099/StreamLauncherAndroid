@@ -18,4 +18,18 @@
     <color name="red_danger">#EF4444</color>
     <color name="red_btn_bg">#3F1D24</color>
     <color name="red_btn_text">#FDA4AF</color>
+
+    <!-- PDF Reader Colors -->
+    <color name="reader_bg">#0B0F19</color>
+    <color name="reader_toolbar_bg">#E60F172A</color>
+    <color name="reader_nav_bg">#E60F172A</color>
+    <color name="reader_card">#1E293B</color>
+    <color name="reader_card_border">#334155</color>
+    <color name="reader_accent">#38BDF8</color>
+    <color name="reader_accent_hover">#0EA5E9</color>
+    <color name="reader_gold">#F59E0B</color>
+    <color name="reader_paper_light">#F8FAFC</color>
+    <color name="reader_paper_sepia">#FBF0D9</color>
+    <color name="reader_paper_dark">#0B0F19</color>
+    <color name="reader_divider">#1E293B</color>
 </resources>

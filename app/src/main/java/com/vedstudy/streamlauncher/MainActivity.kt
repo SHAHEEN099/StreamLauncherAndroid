@@ -6,17 +6,24 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.FrameLayout
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.vedstudy.streamlauncher.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -25,6 +32,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
@@ -82,6 +90,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnRefreshWeb.setOnClickListener {
             reloadStreamWithCookies()
+        }
+
+        binding.btnDocsLibraryWeb.setOnClickListener {
+            showDocsLibraryBottomSheet()
         }
 
         binding.swipeRefresh.setOnRefreshListener {
@@ -251,12 +263,22 @@ class MainActivity : AppCompatActivity() {
         webSettings.cacheMode = WebSettings.LOAD_DEFAULT
         webSettings.userAgentString = USER_AGENT
 
+        // Support multiple windows to capture window.open and target="_blank" notes/PDF links
+        webSettings.setSupportMultipleWindows(true)
+        webSettings.javaScriptCanOpenWindowsAutomatically = true
+
         // Try setting allowlist for WebSettingsCompat if available on device
         try {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                 WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webSettings, emptySet())
             }
         } catch (_: Exception) {}
+
+        // Download Listener to intercept document & PDF downloads seamlessly
+        binding.webView.setDownloadListener { url, _, contentDisposition, mimetype, _ ->
+            Log.d(TAG, "Download requested: url=$url, mimetype=$mimetype")
+            openOrDownloadDocument(url, contentDisposition, mimetype)
+        }
 
         binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -276,6 +298,13 @@ class MainActivity : AppCompatActivity() {
                 val uri = request.url ?: return null
                 val host = uri.host?.lowercase() ?: ""
                 val method = request.method ?: "GET"
+
+                // If URL is directly a PDF on any host, route to reader
+                if (isDocumentUrl(url)) {
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        openOrDownloadDocument(url)
+                    }
+                }
 
                 // Strip X-Requested-With header on all GET requests to testuk.org
                 if (method.equals("GET", ignoreCase = true) && (host.contains("testuk.org") || host.contains("vedstudy"))) {
@@ -322,6 +351,14 @@ class MainActivity : AppCompatActivity() {
                         val okResponse = interceptClient.newCall(okReqBuilder.build()).execute()
 
                         val contentType = okResponse.header("Content-Type", "text/html; charset=utf-8") ?: "text/html; charset=utf-8"
+
+                        // If response is a PDF document, open in PDF Reader!
+                        if (contentType.contains("application/pdf", ignoreCase = true)) {
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                openOrDownloadDocument(url)
+                            }
+                        }
+
                         val mimeType = contentType.substringBefore(";").trim()
                         val encoding = if (contentType.contains("charset=")) {
                             contentType.substringAfter("charset=").trim()
@@ -431,10 +468,88 @@ class MainActivity : AppCompatActivity() {
             override fun onHideCustomView() {
                 hideCustomVideoView()
             }
+
+            // Capture window.open() or target="_blank" links (often used for notes, PDFs, or external links)
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                val tempWebView = WebView(this@MainActivity)
+                tempWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val popupUrl = request?.url?.toString() ?: return false
+                        handlePopupUrl(popupUrl)
+                        return true
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun shouldOverrideUrlLoading(view: WebView?, popupUrl: String?): Boolean {
+                        if (popupUrl == null) return false
+                        handlePopupUrl(popupUrl)
+                        return true
+                    }
+
+                    private fun handlePopupUrl(popupUrl: String) {
+                        if (isDocumentUrl(popupUrl)) {
+                            openOrDownloadDocument(popupUrl)
+                        } else {
+                            binding.webView.loadUrl(popupUrl)
+                        }
+                    }
+                }
+                transport.webView = tempWebView
+                resultMsg.sendToTarget()
+                return true
+            }
         }
     }
 
+    private fun isDocumentUrl(url: String): Boolean {
+        val clean = url.substringBefore("?").lowercase()
+        return clean.endsWith(".pdf") ||
+               clean.endsWith(".doc") ||
+               clean.endsWith(".docx") ||
+               clean.endsWith(".epub") ||
+               url.contains(".pdf?", ignoreCase = true) ||
+               url.contains("/pdf/", ignoreCase = true) ||
+               url.contains("download=pdf", ignoreCase = true) ||
+               url.contains("attachment=pdf", ignoreCase = true)
+    }
+
+    private fun openOrDownloadDocument(url: String, contentDisposition: String? = null, mimeType: String? = null) {
+        var name = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        if (name.isNullOrBlank() || name == "downloadfile.bin") {
+            name = url.substringBefore("?").substringAfterLast("/").takeIf { it.isNotBlank() } ?: "Notes_Document.pdf"
+        }
+        if (!name.endsWith(".pdf", ignoreCase = true) && !name.contains(".")) {
+            name += ".pdf"
+        }
+
+        val cachedFile = PdfDocumentManager.getCachedFileForUrl(this, url, name)
+        if (cachedFile.exists() && cachedFile.length() > 500) {
+            val intent = PdfReaderActivity.createIntent(this, cachedFile.absolutePath, name, url)
+            startActivity(intent)
+            return
+        }
+
+        // Open in reader activity with download progress
+        val intent = Intent(this, PdfReaderActivity::class.java).apply {
+            putExtra(PdfReaderActivity.EXTRA_URL, url)
+            putExtra(PdfReaderActivity.EXTRA_TITLE, name)
+        }
+        startActivity(intent)
+    }
+
     private fun handleUrlNavigation(view: WebView?, url: String): Boolean {
+        // Direct document check
+        if (isDocumentUrl(url)) {
+            openOrDownloadDocument(url)
+            return true
+        }
+
         // Prevent loading the dummy vedstudy.com landing page with the Open Now button
         if (url.contains("vedstudy.com")) {
             Log.d(TAG, "Suppressed vedstudy.com navigation; redirecting directly to stream.testuk.org")
@@ -482,6 +597,55 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (_: Exception) {}
         return true
+    }
+
+    private fun showDocsLibraryBottomSheet() {
+        val dialog = BottomSheetDialog(this)
+        val sheetView = LayoutInflater.from(this).inflate(R.layout.dialog_docs_library, null)
+        dialog.setContentView(sheetView)
+
+        val rv = sheetView.findViewById<RecyclerView>(R.id.rvDocsLibrary)
+        val tvEmpty = sheetView.findViewById<TextView>(R.id.tvEmptyLibrary)
+        val btnClose = sheetView.findViewById<View>(R.id.btnCloseLibrary)
+
+        btnClose.setOnClickListener { dialog.dismiss() }
+
+        val docs = PdfDocumentManager.getRecentDocs(this)
+        if (docs.isEmpty()) {
+            tvEmpty.visibility = View.VISIBLE
+            rv.visibility = View.GONE
+        } else {
+            tvEmpty.visibility = View.GONE
+            rv.visibility = View.VISIBLE
+
+            var adapter: DocsLibraryAdapter? = null
+            adapter = DocsLibraryAdapter(
+                items = docs,
+                onDocClicked = { doc ->
+                    dialog.dismiss()
+                    val intent = PdfReaderActivity.createIntent(this, doc.filePath, doc.title, doc.originalUrl)
+                    startActivity(intent)
+                },
+                onShareClicked = { doc ->
+                    PdfDocumentManager.sharePdf(this, File(doc.filePath), doc.title)
+                },
+                onDeleteClicked = { doc ->
+                    PdfDocumentManager.deleteRecentDoc(this, doc)
+                    val updated = PdfDocumentManager.getRecentDocs(this)
+                    adapter?.updateItems(updated)
+                    if (updated.isEmpty()) {
+                        tvEmpty.visibility = View.VISIBLE
+                        rv.visibility = View.GONE
+                    }
+                    Toast.makeText(this, "Document deleted", Toast.LENGTH_SHORT).show()
+                }
+            )
+
+            rv.layoutManager = LinearLayoutManager(this)
+            rv.adapter = adapter
+        }
+
+        dialog.show()
     }
 
     private fun hideCustomVideoView() {
