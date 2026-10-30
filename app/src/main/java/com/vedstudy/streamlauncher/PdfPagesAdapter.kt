@@ -35,6 +35,7 @@ class PdfPagesAdapter(
     fun setColorMode(newMode: ReaderColorMode) {
         if (colorMode != newMode) {
             colorMode = newMode
+            bitmapCache.evictAll()
             notifyDataSetChanged()
         }
     }
@@ -106,6 +107,8 @@ class PdfPagesAdapter(
                 val targetHeight = ((targetWidth.toFloat() / page.width.toFloat()) * page.height).toInt()
 
                 val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                // Essential for exact original colors: initialize bitmap with opaque white canvas
+                bitmap.eraseColor(android.graphics.Color.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 page.close()
                 bitmap
@@ -115,3 +118,4 @@ class PdfPagesAdapter(
         }
     }
 }
+

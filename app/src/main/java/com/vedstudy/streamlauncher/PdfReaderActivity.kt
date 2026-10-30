@@ -276,7 +276,7 @@ class PdfReaderActivity : AppCompatActivity() {
             }
             ReaderColorMode.SEPIA -> {
                 binding.btnColorMode.setImageResource(R.drawable.ic_night_mode)
-                Toast.makeText(this, "Normal Light Mode", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Original True Colors", Toast.LENGTH_SHORT).show()
                 ReaderColorMode.NORMAL
             }
         }
@@ -447,3 +447,4 @@ class PdfReaderActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 }
+

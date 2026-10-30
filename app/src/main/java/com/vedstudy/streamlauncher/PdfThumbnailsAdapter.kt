@@ -87,6 +87,7 @@ class PdfThumbnailsAdapter(
                             val targetW = 220
                             val targetH = ((targetW.toFloat() / page.width.toFloat()) * page.height).toInt()
                             val b = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                            b.eraseColor(android.graphics.Color.WHITE)
                             page.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                             page.close()
                             b
@@ -105,3 +106,4 @@ class PdfThumbnailsAdapter(
         }
     }
 }
+

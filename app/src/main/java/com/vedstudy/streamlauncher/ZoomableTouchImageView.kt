@@ -58,7 +58,9 @@ class ZoomableTouchImageView @JvmOverloads constructor(
     fun applyColorMode(colorMode: ReaderColorMode) {
         when (colorMode) {
             ReaderColorMode.NORMAL -> {
+                // Exact original colors - pure white background, no filter
                 colorFilter = null
+                setBackgroundColor(android.graphics.Color.WHITE)
             }
             ReaderColorMode.NIGHT -> {
                 // Invert colors + adjust gamma to create a comfortable dark paper reading experience
@@ -69,6 +71,7 @@ class ZoomableTouchImageView @JvmOverloads constructor(
                     0f, 0f, 0f, 1f, 0f
                 ))
                 colorFilter = ColorMatrixColorFilter(invertMatrix)
+                setBackgroundColor(android.graphics.Color.parseColor("#0B0F19"))
             }
             ReaderColorMode.SEPIA -> {
                 // Warm soothing sepia paper tone
@@ -76,6 +79,7 @@ class ZoomableTouchImageView @JvmOverloads constructor(
                     setScale(1.0f, 0.93f, 0.82f, 1.0f)
                 }
                 colorFilter = ColorMatrixColorFilter(sepiaMatrix)
+                setBackgroundColor(android.graphics.Color.parseColor("#FBF0D9"))
             }
         }
     }
@@ -248,3 +252,4 @@ class ZoomableTouchImageView @JvmOverloads constructor(
         }
     }
 }
+
